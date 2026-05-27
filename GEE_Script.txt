@@ -1,0 +1,416 @@
+/*
+=============================================================================
+CONDITIONED HURRICANE FREQUENCY PIPELINE — PHASE 1 (v4)
+Google Earth Engine Code Editor (JavaScript)
+=============================================================================
+
+DATA SOURCES:
+  1. NOAA OISST V2.1 (NOAA/CDR/OISST/V2_1)
+     - Real ocean Sea Surface Temperature (not a proxy)
+     - Daily, 0.25° resolution, 1981-09 to ~present
+     - Bands: sst (°C), anom (pre-computed anomaly vs 1991-2020 clim)
+     - We also compute our own anomaly against 1982-2020 baseline
+
+  2. ERA5-Land Monthly (ECMWF/ERA5_LAND/MONTHLY_AGGR)
+     - Atmospheric variables at coastal pixels
+     - Monthly, 0.1° resolution, 1950 to ~3 months from real-time
+     - Bands: temperature_2m, dewpoint_2m_temperature,
+              surface_pressure, u/v wind at 10m, total_precipitation_sum
+
+BASINS:
+  1. Eastern Pacific  — Otis (2023)
+  2. South Indian Ocean — Freddy (2023)
+  3. Gulf of Mexico    — Harvey (2017)
+  4. Arabian Sea       — Biparjoy (2023)
+
+HOW TO USE:
+  1. Paste into code.earthengine.google.com → Run
+  2. Console: SST anomaly summaries for all 4 storms + chart
+  3. Map: SST anomaly rasters clipped per basin
+  4. Tasks tab: Run exports → CSVs to Google Drive
+=============================================================================
+*/
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 1. DEFINE BASINS
+// ─────────────────────────────────────────────────────────────────────────────
+
+var basins = {
+  eastern_pacific_otis: {
+    name: 'Eastern Pacific — Otis (2023)',
+    storm: 'Otis',
+    stormYear: 2023,
+    baselineEnd: 2020,
+    roi: ee.Geometry.Rectangle([-120, 8, -90, 22]),
+    color: 'FF4444',
+  },
+  south_indian_freddy: {
+    name: 'South Indian Ocean — Freddy (2023)',
+    storm: 'Freddy',
+    stormYear: 2023,
+    baselineEnd: 2020,
+    roi: ee.Geometry.Rectangle([30, -25, 90, -5]),
+    color: '44AAFF',
+  },
+  gulf_mexico_harvey: {
+    name: 'Gulf of Mexico — Harvey (2017)',
+    storm: 'Harvey',
+    stormYear: 2017,
+    baselineEnd: 2016,
+    roi: ee.Geometry.Rectangle([-98, 18, -80, 31]),
+    color: 'FFAA44',
+  },
+  arabian_sea_biparjoy: {
+    name: 'Arabian Sea — Biparjoy (2023)',
+    storm: 'Biparjoy',
+    stormYear: 2023,
+    baselineEnd: 2020,
+    roi: ee.Geometry.Rectangle([50, 5, 78, 28]),
+    color: '44FF88',
+  },
+};
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 2. LOAD DATASETS
+// ─────────────────────────────────────────────────────────────────────────────
+
+// NOAA OISST — real ocean SST, daily, 1981–present
+var oisst = ee.ImageCollection('NOAA/CDR/OISST/V2_1')
+  .filterDate('1982-01-01', '2026-01-01')
+  .select(['sst', 'anom']);
+
+print('OISST collection size:', oisst.size());
+print('OISST date range:',
+  oisst.first().date().format('YYYY-MM-dd'), '→',
+  oisst.sort('system:time_start', false).first().date().format('YYYY-MM-dd'));
+
+// ERA5-Land Monthly — atmospheric vars, 1950–present
+var era5Land = ee.ImageCollection('ECMWF/ERA5_LAND/MONTHLY_AGGR')
+  .filterDate('1982-01-01', '2026-01-01')
+  .select([
+    'temperature_2m',
+    'dewpoint_temperature_2m',
+    'surface_pressure',
+    'u_component_of_wind_10m',
+    'v_component_of_wind_10m',
+    'total_precipitation_sum'
+  ]);
+
+print('ERA5-Land Monthly size:', era5Land.size());
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 3. SST: MONTHLY AGGREGATION + ANOMALY
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Aggregate daily OISST to monthly mean SST for a basin ROI.
+ * Also computes custom anomaly against basin-specific baseline.
+ */
+function extractSSTMonthly(roi, basinKey, baselineEnd) {
+  // Generate year-month pairs
+  var years = ee.List.sequence(1982, 2025);
+  var months = ee.List.sequence(1, 12);
+
+  var monthlyList = years.map(function(y) {
+    return months.map(function(m) {
+      var start = ee.Date.fromYMD(y, m, 1);
+      var end = start.advance(1, 'month');
+
+      var monthImages = oisst.filterDate(start, end).filterBounds(roi);
+      var monthMean = monthImages.mean();
+      // Apply OISST scale factor (stored as int * 100)
+      monthMean = monthMean.multiply(0.01);
+      var count = monthImages.size();
+
+      var spatialMean = monthMean.reduceRegion({
+        reducer: ee.Reducer.mean(),
+        geometry: roi,
+        scale: 27830,
+        maxPixels: 1e9,
+        bestEffort: true
+      });
+
+      return ee.Feature(null, spatialMean)
+        .set('date', start.format('YYYY-MM-dd'))
+        .set('year', y)
+        .set('month', m)
+        .set('basin', basinKey)
+        .set('image_count', count);
+    });
+  }).flatten();
+
+  var monthlyFC = ee.FeatureCollection(monthlyList);
+
+  // Filter out months with no data (future months return null SST)
+  monthlyFC = monthlyFC.filter(ee.Filter.notNull(['sst']));
+
+  // Compute custom anomaly against basin baseline
+  var baseline = monthlyFC.filter(ee.Filter.lte('year', baselineEnd));
+  var climMonths = ee.List.sequence(1, 12);
+  var climatology = ee.FeatureCollection(climMonths.map(function(m) {
+    var mData = baseline.filter(ee.Filter.eq('month', m));
+    return ee.Feature(null, {
+      'month': m,
+      'clim_sst': mData.aggregate_mean('sst')
+    });
+  }));
+
+  // Join climatology
+  var joinFilter = ee.Filter.equals({
+    leftField: 'month', rightField: 'month'
+  });
+  var join = ee.Join.saveFirst({matchKey: 'clim_match'});
+  var joined = join.apply(monthlyFC, climatology, joinFilter);
+
+  var withAnomaly = joined.map(function(f) {
+    var clim = ee.Feature(f.get('clim_match'));
+    var climSST = ee.Number(clim.get('clim_sst'));
+    var sstVal = ee.Number(f.get('sst'));
+    return f
+      .set('sst_anomaly_custom', sstVal.subtract(climSST))
+      .set('clim_sst', climSST)
+      .set('clim_match', null);
+  });
+
+  return withAnomaly;
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 4. ATMOSPHERIC VARS: ERA5-LAND MONTHLY EXTRACTION
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Extract ERA5-Land monthly atmospheric variables for a basin ROI.
+ * ERA5-Land is land-only, so for ocean basins this captures
+ * coastal/island pixels — still useful for wind, pressure, humidity.
+ */
+function extractAtmosMonthly(roi, basinKey) {
+  var filtered = era5Land.filterBounds(roi);
+
+  var reduced = filtered.map(function(image) {
+    // Derive variables
+    var t2m_C = image.select('temperature_2m').subtract(273.15)
+      .rename('land_temp_2m_C');
+    var td_C = image.select('dewpoint_temperature_2m').subtract(273.15)
+      .rename('land_dewpoint_C');
+    var sp = image.select('surface_pressure').divide(100)
+      .rename('surface_pressure_hPa');
+    var u10 = image.select('u_component_of_wind_10m');
+    var v10 = image.select('v_component_of_wind_10m');
+    var wspd = u10.pow(2).add(v10.pow(2)).sqrt()
+      .rename('wind_speed_10m');
+    var dd = t2m_C.subtract(td_C).rename('dewpoint_depression_C');
+    var precip = image.select('total_precipitation_sum').multiply(1000)
+      .rename('precip_mm');
+
+    var derived = t2m_C.addBands(td_C).addBands(sp)
+      .addBands(wspd).addBands(dd).addBands(precip)
+      .addBands(u10).addBands(v10);
+
+    var means = derived.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: roi,
+      scale: 11132,   // ERA5-Land native resolution
+      maxPixels: 1e9,
+      bestEffort: true
+    });
+
+    var date = image.date();
+    return ee.Feature(null, means)
+      .set('date', date.format('YYYY-MM-dd'))
+      .set('year', date.get('year'))
+      .set('month', date.get('month'))
+      .set('basin', basinKey);
+  });
+
+  return ee.FeatureCollection(reduced);
+}
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 5. PROCESS ALL BASINS
+// ─────────────────────────────────────────────────────────────────────────────
+
+var anomalyVis = {
+  min: -3,
+  max: 3,
+  palette: [
+    '0000CC', '0044FF', '0088FF', '00CCFF',
+    'CCFFCC', 'FFFFCC',
+    'FFCC00', 'FF8800', 'FF4400', 'CC0000'
+  ]
+};
+
+var basinKeys = Object.keys(basins);
+
+basinKeys.forEach(function(key) {
+  var config = basins[key];
+
+  print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  print('BASIN: ' + config.name);
+  print('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+
+  // ── SST from OISST ──
+  var sstFC = extractSSTMonthly(config.roi, key, config.baselineEnd);
+
+  // Storm year SST
+  var stormSST = sstFC.filter(ee.Filter.eq('year', config.stormYear));
+  print(config.storm + ' (' + config.stormYear + ') — monthly SST anomalies:');
+  print(stormSST.aggregate_array('sst_anomaly_custom'));
+  print('Mean SST anomaly in storm year:',
+    stormSST.aggregate_mean('sst_anomaly_custom'));
+  print('Mean absolute SST in storm year (°C):',
+    stormSST.aggregate_mean('sst'));
+
+  // Post-storm SST
+  var postSST = sstFC.filter(ee.Filter.gt('year', config.stormYear));
+  print('Post-storm years mean SST anomaly:',
+    postSST.aggregate_mean('sst_anomaly_custom'));
+
+  // Baseline
+  var baseSST = sstFC.filter(ee.Filter.lte('year', config.baselineEnd));
+  print('Baseline mean SST (°C):',
+    baseSST.aggregate_mean('sst'));
+
+  // NOAA pre-computed anomaly (vs 1991-2020) for comparison
+  print('NOAA anom (vs 1991-2020) in storm year:',
+    stormSST.aggregate_mean('anom'));
+
+  // ── Atmospheric vars from ERA5-Land ──
+  var atmosFC = extractAtmosMonthly(config.roi, key);
+
+  // Storm year atmos
+  var stormAtmos = atmosFC.filter(ee.Filter.eq('year', config.stormYear));
+  print('Storm year mean wind speed (m/s):',
+    stormAtmos.aggregate_mean('wind_speed_10m'));
+  print('Storm year mean dewpoint depression (°C):',
+    stormAtmos.aggregate_mean('dewpoint_depression_C'));
+  print('Storm year mean surface pressure (hPa):',
+    stormAtmos.aggregate_mean('surface_pressure_hPa'));
+  print('Storm year mean precipitation (mm):',
+    stormAtmos.aggregate_mean('precip_mm'));
+
+  // ── Export combined SST CSV ──
+  Export.table.toDrive({
+    collection: sstFC,
+    description: 'oisst_' + key + '_monthly',
+    folder: 'cyclone_pipeline',
+    fileNamePrefix: 'oisst_' + key + '_monthly',
+    fileFormat: 'CSV',
+    selectors: [
+      'date', 'year', 'month', 'basin', 'image_count',
+      'sst', 'anom', 'clim_sst', 'sst_anomaly_custom'
+    ]
+  });
+
+  // ── Export atmospheric CSV ──
+  Export.table.toDrive({
+    collection: atmosFC,
+    description: 'era5land_' + key + '_monthly',
+    folder: 'cyclone_pipeline',
+    fileNamePrefix: 'era5land_' + key + '_monthly',
+    fileFormat: 'CSV',
+    selectors: [
+      'date', 'year', 'month', 'basin',
+      'land_temp_2m_C', 'land_dewpoint_C',
+      'surface_pressure_hPa', 'wind_speed_10m',
+      'u_component_of_wind_10m', 'v_component_of_wind_10m',
+      'dewpoint_depression_C', 'precip_mm'
+    ]
+  });
+
+  print('→ Export tasks queued: oisst_' + key + ' + era5land_' + key);
+
+  // ── Map: SST anomaly raster ──
+  // Latest month SST vs baseline
+  var baselineOISST = oisst.filterBounds(config.roi)
+    .filter(ee.Filter.calendarRange(1982, config.baselineEnd, 'year'));
+  var baselineMeanSST = baselineOISST.select('sst').mean().multiply(0.01);
+
+  var latestOISST = oisst.filterBounds(config.roi)
+    .sort('system:time_start', false).limit(30)
+    .select('sst').mean().multiply(0.01);
+
+  var sstAnomalyRaster = latestOISST.subtract(baselineMeanSST)
+    .rename('sst_anomaly').clip(config.roi);
+
+  Map.addLayer(sstAnomalyRaster, anomalyVis,
+    config.storm + ' — SST Anomaly (latest)', true, 0.7);
+
+  // ROI outline
+  var roiOutline = ee.Image().byte().paint({
+    featureCollection: ee.FeatureCollection([ee.Feature(config.roi)]),
+    color: 1, width: 2
+  });
+  Map.addLayer(roiOutline, {palette: [config.color]},
+    config.storm + ' — ROI');
+});
+
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 6. HARVEY TIME SERIES CHART (SST)
+// ─────────────────────────────────────────────────────────────────────────────
+
+var harveySST = extractSSTMonthly(
+  basins.gulf_mexico_harvey.roi, 'harvey', 2016);
+
+var harveyChart = ui.Chart.feature.byFeature({
+  features: harveySST,
+  xProperty: 'date',
+  yProperties: ['sst_anomaly_custom']
+}).setOptions({
+  title: 'Gulf of Mexico — Ocean SST Anomaly (1982–2025), Baseline: 1982–2016',
+  hAxis: {title: 'Date'},
+  vAxis: {title: 'SST Anomaly (°C)'},
+  lineWidth: 1,
+  pointSize: 2,
+  series: {0: {color: 'FF6600'}},
+  trendlines: {0: {
+    type: 'linear',
+    color: '333333',
+    lineWidth: 1,
+    opacity: 0.5,
+    showR2: true,
+    visibleInLegend: true
+  }}
+});
+
+print('─────────────────────────────────────');
+print('HARVEY — OCEAN SST ANOMALY TREND');
+print('─────────────────────────────────────');
+print(harveyChart);
+
+// Also chart all 4 basins' annual mean SST anomaly for comparison
+// (This may take a moment to render)
+
+Map.setCenter(20, 10, 2);
+
+print('─────────────────────────────────────');
+print('MAP: SST anomaly per basin (latest ~30 days vs baseline)');
+print('Blue = cooler, Red = warmer than baseline');
+print('─────────────────────────────────────');
+
+
+/*
+=============================================================================
+EXPECTED OUTPUT:
+
+All four basins should now show SST anomaly data through 2025:
+  - Otis (2023): expect warm anomaly in E-Pac for 2023
+  - Freddy (2023): expect warm anomaly in SW Indian Ocean
+  - Harvey (2017): should match v2 results + extend to 2025
+  - Biparjoy (2023): expect warm anomaly in Arabian Sea
+
+EXPORTS (8 total — 2 per basin):
+  - oisst_{basin}_monthly.csv  — ocean SST + anomalies
+  - era5land_{basin}_monthly.csv — wind, pressure, humidity, precip
+
+NEXT STEPS:
+  1. Share console output (especially anomaly arrays for all 4 storms)
+  2. Run all 8 export tasks
+  3. Phase 1B: IBTrACS storm track parsing
+=============================================================================
+*/
