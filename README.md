@@ -1,68 +1,72 @@
-# 🌪️ Dynamic Climate-Conditioned Catastrophe Pipeline
+# Dynamic Climate-Conditioned Catastrophe Modeling
+**Evaluating Non-Stationary Cyclone Tail-Risk via Thermodynamic & Bayesian Constraints**
 
-**A Bayesian Frequency and Thermodynamic Hazard Engine for Modern Reinsurance Portfolio Pricing.**
-
-![Python](https://img.shields.io/badge/Python-3.12-blue?logo=python)
-![PyMC](https://img.shields.io/badge/PyMC-Bayesian_Inference-red?logo=python)
-![GEE](https://img.shields.io/badge/Google_Earth_Engine-Atmospheric_Reanalysis-green?logo=google)
-![Status](https://img.shields.io/badge/Status-Production_Ready-success)
-
-## 📌 Executive Summary
-Traditional catastrophe models share a critical vulnerability: they price modern accumulation risk using a stationary historical baseline (e.g., 1980–2010). However, the climate is non-stationary. Pricing Probable Maximum Loss (PML) limits against 40-year historical averages structurally underprices extreme tail risk in the current warming regime.
-
-This project represents a complete architectural overhaul of how cyclone hazard is modeled. It shifts from empirical historical lookbacks to **physics-based thermodynamic capacity**, integrating localized Sea Surface Temperature (SST) anomalies into a **Bayesian Negative Binomial MCMC engine**, and applying **Super-Clausius-Clapeyron** scaling to 10,000-year stochastic event sets. 
-
-**Core Finding:** The mathematical reality of 2026 is that the historical 99th percentile extreme is rapidly becoming the standard active season. The models prove significant hazard footprint expansions, specifically in the **Gulf of Mexico (+21.5% frequency shift)** and the **Arabian Sea (+11.7% frequency shift)**.
+**Focus:** Catastrophe Modeling | AI Engineering | Spatial Data Analysis  
+**Date:** May 2026  
 
 ---
 
-## 🏗️ Pipeline Architecture
+## 📌 Project Objective
+Standard catastrophe models fundamentally rely on stationary historical baselines (e.g., 1980–2010) to generate Probable Maximum Loss (PML) limits. However, atmospheric physics dictates that the climate is non-stationary. 
 
-This pipeline is built in three distinct phases, bridging the gap between raw atmospheric reanalysis and actuarial treaty pricing:
-
-### Phase 1: Geospatial & Atmospheric Data Engineering
-* **Data Sources:** NOAA IBTrACS (Best Track data) and Google Earth Engine (ERA5-Land / OISST).
-* **Spatio-Temporal Masking:** Built a ±1 day temporal buffer around specific historical storm tracks to perfectly isolate cyclone-induced maximum precipitation, mathematically stripping out ambient monsoon and atmospheric river noise.
-* **True VMAX Extraction:** Overcame atmospheric dilution by pulling localized peak gust velocity directly from IBTrACS, rather than relying on basin-wide ERA5 ambient wind averages.
-
-### Phase 2: Bayesian Frequency Engine
-* **Model:** Bayesian Negative Binomial Regression (`PyMC`).
-* **Logic:** Models the non-linear elasticity between cyclogenesis and thermodynamic fuel (SST anomalies & Dewpoint Depression).
-* **Validation:** Achieved mathematically sound convergence (`r_hat` = 1.00) and generated Posterior Predictive Checks that dynamically trace the volatile peaks and valleys of extreme seasons, proving the model dynamically tracks climate reality rather than flatline averages.
-
-### Phase 3: Thermodynamic Hazard Scaling (Severity Expansion)
-* **Precipitation:** Applied **Super-Clausius-Clapeyron (Super-CC)** scaling (+10% volumetric capacity per +1.0°C anomaly) to simulated lognormal distributions.
-* **Wind Speed:** Applied **Maximum Potential Intensity (MPI)** scaling (+5% velocity per +1.0°C anomaly) to extreme value distributions.
-* **Result:** A 10,000-year Monte Carlo simulated event set that explicitly maps the "Shocked 99th Percentile" against the immutable Historical Maximums, quantifying the exact dollar-value gap in un-modeled risk.
+This project demonstrates a modernized hazard modeling architecture designed to evaluate how current climate conditions expand extreme tail risks. By integrating localized Sea Surface Temperature (SST) anomalies into a Bayesian Negative Binomial framework and applying Super-Clausius-Clapeyron (Super-CC) scaling to 10,000-year stochastic event sets, this pipeline quantifies the exact expansion of 1-in-100 year severity limits across four critical global basins.
 
 ---
 
-## 📊 Key Actuarial Findings
-
-| Basin | Analog Event | SST Shock | $\mu$ Shift | 99th Pctl Volumetric Penalty | Commercial Implication |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Gulf of Mexico** | Harvey (2017) | +0.98°C | +21.5% | +9.8% | Requires immediate recalibration of US Gulf Coast inland flood exclusions. |
-| **Arabian Sea** | Biparjoy (2023) | +0.22°C | +11.7% | +2.2% | Emerging risk vector. High elasticity to minor heat anomalies threatens un-modeled Indian west-coast exposures. |
-| **Eastern Pacific** | Otis (2023) | +0.27°C | -0.7% | +2.6% | Validates spatial precision; local cooling downgraded frequency, but severity tail risk still expanded past historical ceilings. |
-| **South Indian** | Freddy (2023) | +0.60°C | -1.1% | +5.9% | Proves the "Wind vs. Water" paradox: Severity expansion outpaces frequency shifts. |
+## 🏗️ Methodological Framework
+1. **Spatio-Temporal Masking:** Utilized a ±1 day temporal buffer around historical IBTrACS storm tracks to isolate true cyclone-induced maximum precipitation in ERA5 data, filtering out ambient seasonal noise.
+2. **True VMAX Extraction:** Overcame atmospheric reanalysis dilution by extracting localized peak gust velocities directly from best-track data.
+3. **Bayesian Frequency Elasticity:** Deployed `PyMC` to model the non-linear elasticity between cyclogenesis rates ($\mu$) and localized thermodynamic fuel.
+4. **Thermodynamic Hazard Scaling:** Applied Maximum Potential Intensity (MPI) and Super-CC constraints to historical distributions to simulate mathematically sound 10,000-year event sets under current SST anomalies.
 
 ---
 
-## 📈 Core Visualizations (Available in `/output`)
+## 📊 Basin-Specific Hazard Analyses
 
-1. **Hazard Tail-Risk Expansion (`hazard_tail_risk_expert.png`):** The "smoking gun" plot. Explicitly overlays the historical maximums (solid black) against the climate-shocked 99th percentile (dashed red) to visualize how modern physics has decoupled from historical limits.
-2. **Complete Hazard Anatomy (`complete_hazard_anatomy.png`):** A multi-axis visualization proving the correlation between SST Anomaly (Fuel), Peak VMAX Wind (Intensity), and true Cyclone-Induced Precipitation (Footprint), while visually proving that weaker wind storms can produce catastrophic flood events.
-3. **Posterior Predictive Tracking (`time_series_fit.png`):** Validates the Bayesian engine's dynamic response to yearly localized marine heatwaves.
+### 1. Gulf of Mexico — Analog: Harvey (2017)
+*Observation: Extreme Frequency & Volumetric Expansion*
+
+* **Current Climate Shock:** +0.98°C Anomaly
+* **Frequency Shift:** **+21.0%** (Baseline: 2.89 → Current: 3.50 storms/year)
+* **Severity Expansion:** * Precipitation Capacity: +9.8% 
+    * Wind Capacity: +4.9%
+* **Tail-Risk Evaluation (1-in-100 Year):** Simulated peak precipitation reaches **595 mm**, heavily decoupling from the historical maximum observation of 386 mm. 
+* **Hazard Profile Shift:** The thermodynamic environment demonstrates a compounding expansion of both frequency and volumetric capacity. The simulated output illustrates a significant divergence between stationary historical severity limits and the current mathematical capacity for coastal and inland precipitation.
+
+### 2. Arabian Sea — Analog: Biparjoy (2023)
+*Observation: High Elasticity to Minor Heat Shocks*
+
+* **Current Climate Shock:** +0.22°C Anomaly
+* **Frequency Shift:** **+11.7%** (Baseline: 1.45 → Current: 1.62 storms/year)
+* **Severity Expansion:** * Precipitation Capacity: +2.2% 
+    * Wind Capacity: +1.1%
+* **Tail-Risk Evaluation (1-in-100 Year):** Simulated extreme wind reaches **96.11 m/s** (vs. historical 74.59 m/s). Simulated precipitation reaches **192 mm** (vs. historical 122 mm).
+* **Hazard Profile Shift:** Despite a relatively modest +0.22°C SST anomaly, the Arabian Sea demonstrates extreme frequency elasticity. The model successfully captures the physical dynamics of a historically low-data basin approaching new thermodynamic thresholds, mapping a distinct upward shift in the 99th percentile wind ceiling.
+
+### 3. South Indian Ocean — Analog: Freddy (2023)
+*Observation: Severity Expansion Outpacing Frequency*
+
+* **Current Climate Shock:** +0.60°C Anomaly
+* **Frequency Shift:** **-1.4%** (Baseline: 8.49 → Current: 8.38 storms/year)
+* **Severity Expansion:** * Precipitation Capacity: +5.9% 
+    * Wind Capacity: +3.0%
+* **Tail-Risk Evaluation (1-in-100 Year):** Simulated extreme precipitation reaches **1195 mm** (vs. historical 860 mm). Simulated wind speeds reach **83.91 m/s** (vs. historical 74.59 m/s).
+* **Hazard Profile Shift:** A slight suppression in overall storm frequency occurs alongside a massive expansion in tail severity. This isolates the specific dynamic where absolute storm counts do not directly correlate with the physical ceiling for flood inundation and localized wind damage.
+
+### 4. Eastern Pacific — Analog: Otis (2023)
+*Observation: Validation of Localized Spatial Constraints*
+
+* **Current Climate Shock:** +0.27°C Anomaly
+* **Frequency Shift:** **-1.2%** (Baseline: 15.67 → Current: 15.49 storms/year)
+* **Severity Expansion:** * Precipitation Capacity: +2.6% 
+    * Wind Capacity: +1.3%
+* **Tail-Risk Evaluation (1-in-100 Year):** Simulated extreme precipitation reaches **1605 mm** (vs. historical 1179 mm). Simulated wind speeds reach **86.67 m/s** (Historical max: 95.17 m/s).
+* **Hazard Profile Shift:** The Eastern Pacific output provides critical validation of the model's spatial constraints. The localized ambient current anomaly (+0.27°C) pushed the 99th percentile wind ceiling to 86.67 m/s, remaining strictly below the historical maximum (Otis at 95.17 m/s). This mathematically isolates the analog event as a statistical outlier that exceeded even modern climate-shocked percentiles, while confirming the structural rise of the volumetric rainfall limit.
 
 ---
 
-## 🚀 Setup & Execution
-
-### Prerequisites
-* Python 3.10+
-* Google Earth Engine API Access (`earthengine-api`)
-
-### Installation
-```bash
-git clone [https://github.com/aalokpro-collab/Cyclone_Climate_Change_Impact.git](https://github.com/aalokpro-collab/Cyclone_Climate_Change_Impact.git)
-cd Cyclone_Climate_Change_Impact
+## 🎯 System Capabilities Demonstrated
+This modeling exercise proves the efficacy of moving beyond flat-line historical baselines in risk evaluation. By coupling spatio-temporal satellite data masking with Bayesian inference, the architecture successfully:
+1. **Dynamically Tracks Climate Reality:** Proves capability to model non-stationary environments where historical maximums no longer represent the 99th percentile.
+2. **Isolates Hazard Vectors:** Effectively separates volumetric flood hazard footprints from standard wind-intensity categorizations, demonstrating that non-major cyclonic events are physically capable of breaching historical precipitation limits.
+3. **Applies Physics-Based Constraints:** Utilizes established thermodynamic laws (Super-CC and MPI) to generate synthetic, physically sound event sets for historically sparse or emerging risk basins.
